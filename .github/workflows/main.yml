@@ -1,0 +1,86 @@
+
+name: Самолетики LIVE APK Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '*.zip'
+      - '**/*.zip'
+      - '.github/workflows/main.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Скачать репозиторий
+        uses: actions/checkout@v4
+
+      - name: Найти и распаковать ZIP
+        run: |
+          ZIP=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "ZIP архив не найден!"
+            exit 1
+          fi
+
+          mkdir -p extracted
+          unzip -o "$ZIP" -d extracted
+
+          APP=$(find extracted -name package.json -printf '%h\n' | head -n 1)
+
+          if [ -z "$APP" ]; then
+            echo "package.json не найден!"
+            exit 1
+          fi
+
+          mkdir -p app
+          cp -r "$APP"/. app/
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Установить Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Установить Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Установить зависимости
+        working-directory: app
+        run: npm install
+
+      - name: Создать Android проект
+        working-directory: app
+        run: npx cap add android
+
+      - name: Синхронизировать приложение
+        working-directory: app
+        run: npx cap sync android
+
+      - name: Собрать APK
+        working-directory: app
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Загрузить APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Samoletiki-LIVE-APK
+          path: app/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          
